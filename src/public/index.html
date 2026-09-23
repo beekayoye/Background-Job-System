@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Reliable Background Job System</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background-color: #f6f8fa;
+      color: #24292f;
+      max-width: 800px;
+      margin: 40px auto;
+      padding: 0 20px;
+    }
+    h1 { font-size: 24px; border-bottom: 1px solid #d0d7de; padding-bottom: 10px; }
+    h2 { font-size: 18px; margin-top: 24px; }
+    .card {
+      background: #ffffff;
+      border: 1px solid #d0d7de;
+      border-radius: 6px;
+      padding: 20px;
+      margin-bottom: 20px;
+    }
+    label { display: block; font-weight: 600; margin-bottom: 6px; font-size: 14px; }
+    input, textarea {
+      width: 100%;
+      padding: 8px 12px;
+      border: 1px solid #d0d7de;
+      border-radius: 6px;
+      margin-bottom: 14px;
+      box-sizing: border-box;
+      font-size: 14px;
+    }
+    button {
+      background-color: #2da44e;
+      color: white;
+      border: none;
+      padding: 9px 16px;
+      border-radius: 6px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    button:hover { background-color: #2c974b; }
+    button.btn-retry { background-color: #0969da; margin-top: 8px; }
+    pre {
+      background: #f6f8fa;
+      border: 1px solid #d0d7de;
+      border-radius: 6px;
+      padding: 12px;
+      overflow-x: auto;
+      font-size: 13px;
+    }
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 12px;
+      font-size: 12px;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+    .badge-pending { background: #ddf4ff; color: #0969da; }
+    .badge-processing { background: #fff8c5; color: #9a6700; }
+    .badge-succeeded { background: #dafbe1; color: #1a7f37; }
+    .badge-dead { background: #ffebe9; color: #cf222e; }
+  </style>
+</head>
+<body>
+  <h1>📨 Reliable Background Job System</h1>
+
+  <!-- API Key Configuration -->
+  <div class="card">
+    <label for="apiKey">API Key (Authorization)</label>
+    <input type="text" id="apiKey" value="demo-secret-api-key" placeholder="Enter fixed API key">
+  </div>
+
+  <!-- Enqueue Job Form -->
+  <div class="card">
+    <h2>Enqueue New Email Job</h2>
+    <form id="enqueueForm">
+      <label for="to">Recipient Email (to)</label>
+      <input type="email" id="to" required value="user@example.com">
+
+      <label for="subject">Subject</label>
+      <input type="text" id="subject" required value="Your Weekly Summary">
+
+      <label for="body">Message Body</label>
+      <textarea id="body" rows="3" required>Here is the weekly report for your account.</textarea>
+
+      <label for="idempotencyKey">Idempotency Key (Optional)</label>
+      <input type="text" id="idempotencyKey" placeholder="Leave empty for auto-generated UUID">
+
+      <button type="submit">Enqueue Job (HTTP 202)</button>
+    </form>
+    <div id="enqueueResult" style="margin-top: 15px; display: none;">
+      <pre id="enqueueOutput"></pre>
+    </div>
+  </div>
+
+  <!-- Check Job Status -->
+  <div class="card">
+    <h2>Check Job Status</h2>
+    <div style="display: flex; gap: 10px;">
+      <input type="text" id="statusJobId" placeholder="Enter Job ID (UUID)">
+      <button id="checkStatusBtn" style="white-space: nowrap;">Check Status</button>
+    </div>
+    <div id="statusResult" style="margin-top: 10px; display: none;">
+      <pre id="statusOutput"></pre>
+    </div>
+  </div>
+
+  <!-- Dead Letter Queue View -->
+  <div class="card">
+    <div style="display: flex; justify-content: space-between; align-items: center;">
+      <h2 style="margin: 0;">Dead Letter Queue</h2>
+      <button id="refreshDeadBtn" style="background-color: #57606a;">Refresh</button>
+    </div>
+    <div id="deadLetterList" style="margin-top: 15px;">
+      <p style="color: #57606a; font-size: 14px;">Click Refresh to list dead jobs.</p>
+    </div>
+  </div>
+
+  <script>
+    const getHeaders = () => ({
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${document.getElementById('apiKey').value.trim()}`
+    });
+
+    // Enqueue form
+    document.getElementById('enqueueForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const to = document.getElementById('to').value.trim();
+      const subject = document.getElementById('subject').value.trim();
+      const body = document.getElementById('body').value.trim();
+      const idempotencyKey = document.getElementById('idempotencyKey').value.trim();
+
+      const payload = { type: 'email', payload: { to, subject, body } };
+      if (idempotencyKey) payload.idempotencyKey = idempotencyKey;
+
+      try {
+        const res = await fetch('/api/jobs', {
+          method: 'POST',
+          headers: getHeaders(),
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        document.getElementById('enqueueResult').style.display = 'block';
+        document.getElementById('enqueueOutput').innerText = `HTTP ${res.status}\n` + JSON.stringify(data, null, 2);
+        if (data.id) document.getElementById('statusJobId').value = data.id;
+      } catch (err) {
+        alert('Error enqueuing job: ' + err.message);
+      }
+    });
+
+    // Check status
+    document.getElementById('checkStatusBtn').addEventListener('click', async () => {
+      const id = document.getElementById('statusJobId').value.trim();
+      if (!id) return alert('Enter a Job ID');
+
+      try {
+        const res = await fetch(`/api/jobs/${id}`, { headers: getHeaders() });
+        const data = await res.json();
+        document.getElementById('statusResult').style.display = 'block';
+        document.getElementById('statusOutput').innerText = `HTTP ${res.status}\n` + JSON.stringify(data, null, 2);
+      } catch (err) {
+        alert('Error checking status: ' + err.message);
+      }
+    });
+
+    // Dead letter view
+    async function loadDeadJobs() {
+      try {
+        const res = await fetch('/api/jobs/dead', { headers: getHeaders() });
+        const jobs = await res.json();
+        const container = document.getElementById('deadLetterList');
+
+        if (!Array.isArray(jobs) || jobs.length === 0) {
+          container.innerHTML = '<p style="color: #57606a;">Zero dead jobs found in queue.</p>';
+          return;
+        }
+
+        container.innerHTML = jobs.map(j => `
+          <div style="border: 1px solid #d0d7de; border-radius: 6px; padding: 12px; margin-bottom: 10px;">
+            <div style="display: flex; justify-content: space-between;">
+              <strong>Job ID: ${j.id}</strong>
+              <span class="badge badge-dead">${j.status}</span>
+            </div>
+            <p style="margin: 6px 0; font-size: 13px; color: #cf222e;"><strong>Error:</strong> ${j.lastError || 'None'}</p>
+            <p style="margin: 4px 0; font-size: 12px; color: #57606a;">Attempts: ${j.attempts}/${j.maxAttempts} | Updated: ${j.updatedAt}</p>
+            <pre style="margin: 8px 0;">${JSON.stringify(j.payload, null, 2)}</pre>
+            <button class="btn-retry" onclick="retryJob('${j.id}')">Retry Job (POST /api/jobs/:id/retry)</button>
+          </div>
+        `).join('');
+      } catch (err) {
+        alert('Error loading dead jobs: ' + err.message);
+      }
+    }
+
+    window.retryJob = async function(id) {
+      try {
+        const res = await fetch(`/api/jobs/${id}/retry`, {
+          method: 'POST',
+          headers: getHeaders()
+        });
+        const data = await res.json();
+        alert(`Job ${id} reset to pending status!`);
+        loadDeadJobs();
+      } catch (err) {
+        alert('Error retrying job: ' + err.message);
+      }
+    };
+
+    document.getElementById('refreshDeadBtn').addEventListener('click', loadDeadJobs);
+  </script>
+</body>
+</html>
