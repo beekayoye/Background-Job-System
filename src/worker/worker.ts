@@ -64,8 +64,10 @@ export class Worker {
 
         // Claimed job; execute in background
         this.activeJobsCount++;
+        console.log(`[WORKER] Claimed job ${job.id}. Active jobs: ${this.activeJobsCount}/${config.CONCURRENCY_LIMIT}`);
         this.executeJob(job).finally(() => {
           this.activeJobsCount--;
+          console.log(`[WORKER] Finished job ${job.id}. Active jobs: ${this.activeJobsCount}/${config.CONCURRENCY_LIMIT}`);
         });
       } catch (err) {
         console.error('Error claiming job in polling loop:', err);

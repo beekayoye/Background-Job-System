@@ -18,6 +18,12 @@ jobsRouter.post('/', async (req: Request, res: Response) => {
       return;
     }
 
+    // Supported job types allow-list (Assumption 9)
+    if (type !== 'send_email') {
+      res.status(400).json({ error: `Unsupported job type "${type}": only "send_email" is supported` });
+      return;
+    }
+
     if (!payload || typeof payload !== 'object') {
       res.status(400).json({ error: 'Field "payload" is required and must be an object' });
       return;
@@ -49,8 +55,8 @@ jobsRouter.post('/', async (req: Request, res: Response) => {
       },
     });
 
-    // HTTP 202 with job id; performs no synchronous work
-    res.status(202).json({ id: newJob.id, status: newJob.status, idempotencyKey: newJob.idempotencyKey });
+    // HTTP 202 with full job row; performs no synchronous work
+    res.status(202).json(newJob);
   } catch (err: unknown) {
     // Handle database unique constraint race conditions if two identical keys insert simultaneously
     const prismaError = err as { code?: string };

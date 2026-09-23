@@ -72,7 +72,7 @@
   <!-- API Key Configuration -->
   <div class="card">
     <label for="apiKey">API Key (Authorization)</label>
-    <input type="text" id="apiKey" value="demo-secret-api-key" placeholder="Enter fixed API key">
+    <input type="password" id="apiKey" placeholder="Enter fixed API key (e.g. from .env)">
   </div>
 
   <!-- Enqueue Job Form -->
@@ -135,7 +135,7 @@
       const body = document.getElementById('body').value.trim();
       const idempotencyKey = document.getElementById('idempotencyKey').value.trim();
 
-      const payload = { type: 'email', payload: { to, subject, body } };
+      const payload = { type: 'send_email', payload: { to, subject, body } };
       if (idempotencyKey) payload.idempotencyKey = idempotencyKey;
 
       try {
