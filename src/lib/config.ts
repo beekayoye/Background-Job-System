@@ -19,7 +19,7 @@ export interface AppConfig {
 
 function getEnvNumber(key: string, defaultValue: number): number {
   const val = process.env[key];
-  if (!val) return defaultValue;
+  if (!val || val.trim() === '') return defaultValue;
   const parsed = Number(val);
   if (isNaN(parsed)) {
     throw new Error(`Invalid numeric configuration value for environment variable: ${key}=${val}`);
@@ -29,21 +29,26 @@ function getEnvNumber(key: string, defaultValue: number): number {
 
 function getEnvString(key: string, defaultValue?: string): string {
   const val = process.env[key];
-  if (!val) {
+  if (!val || val.trim() === '') {
     if (defaultValue !== undefined) return defaultValue;
     throw new Error(`Missing required environment variable: ${key}`);
   }
-  return val;
+  return val.trim();
 }
 
 /**
  * Validates and exports all configuration variables from process.env.
- * Fails fast at startup if any required variable is missing.
+ * Fails fast at startup if any required variable without a default is missing.
  */
 export const config: AppConfig = {
-  DATABASE_URL: getEnvString('DATABASE_URL', 'postgresql://postgres:postgres@localhost:5432/job_system_db?schema=public'),
+  // Required variables with no default (throw if missing)
+  DATABASE_URL: getEnvString('DATABASE_URL'),
+  FIXED_API_KEY: getEnvString('FIXED_API_KEY'),
+  EMAIL_API_KEY: getEnvString('EMAIL_API_KEY'),
+  EMAIL_FROM_ADDRESS: getEnvString('EMAIL_FROM_ADDRESS'),
+
+  // Configurable variables with locked default values
   API_PORT: getEnvNumber('API_PORT', 3000),
-  FIXED_API_KEY: getEnvString('FIXED_API_KEY', 'demo-secret-api-key'),
   MAX_ATTEMPTS: getEnvNumber('MAX_ATTEMPTS', 5),
   BACKOFF_BASE_MS: getEnvNumber('BACKOFF_BASE_MS', 30000),
   BACKOFF_CAP_MS: getEnvNumber('BACKOFF_CAP_MS', 300000),
@@ -51,7 +56,5 @@ export const config: AppConfig = {
   CONCURRENCY_LIMIT: getEnvNumber('CONCURRENCY_LIMIT', 5),
   STUCK_JOB_TIMEOUT_MS: getEnvNumber('STUCK_JOB_TIMEOUT_MS', 300000),
   POLL_INTERVAL_MS: getEnvNumber('POLL_INTERVAL_MS', 1000),
-  EMAIL_API_KEY: getEnvString('EMAIL_API_KEY', 'placeholder_email_api_key'),
   EMAIL_API_TIMEOUT_MS: getEnvNumber('EMAIL_API_TIMEOUT_MS', 10000),
-  EMAIL_FROM_ADDRESS: getEnvString('EMAIL_FROM_ADDRESS', 'no-reply@example.com'),
 };

@@ -35,7 +35,7 @@ export function classifyEmailError(err: unknown): { classification: FailureClass
     return { classification: 'permanent', message };
   }
 
-  // Default: Retryable (network timeout, 429 rate limits, 5xx server errors)
+  // Default: Retryable (network timeout, missing messageId, 429 rate limits, 5xx server errors)
   return { classification: 'retryable', message };
 }
 
@@ -58,6 +58,11 @@ export async function processEmailJob(
       idempotencyKey: job.idempotencyKey,
     });
 
+    // Validate that the provider returned a non-empty message id
+    if (!sendResult || !sendResult.messageId || typeof sendResult.messageId !== 'string' || sendResult.messageId.trim() === '') {
+      throw new Error('Provider returned no message id');
+    }
+
     // Mark succeeded and record result JSON immediately to narrow the crash window
     await prisma.job.update({
       where: { id: job.id },
@@ -65,7 +70,7 @@ export async function processEmailJob(
         status: 'succeeded',
         finishedAt: new Date(),
         result: {
-          messageId: sendResult.messageId,
+          messageId: sendResult.messageId.trim(),
           timestamp: sendResult.timestamp,
         },
       },
@@ -78,7 +83,15 @@ export async function processEmailJob(
 
     if (classification === 'system_level') {
       console.error(`🚨 CRITICAL SYSTEM ALERT: Email provider authentication failed (401/403): ${message}`);
-      // Do not dead-letter; leave job for retry once credentials are fixed
+      // Set status back to pending, record lastError, leave runAt as-is, and DO NOT increment attempts
+      await prisma.job.update({
+        where: { id: job.id },
+        data: {
+          status: 'pending',
+          lastError: message,
+          startedAt: null,
+        },
+      });
       return { success: false, classification, error: message };
     }
 
@@ -107,6 +120,7 @@ export async function processEmailJob(
         attempts: nextAttempts,
         lastError: message,
         runAt: nextRunAt,
+        startedAt: null,
       },
     });
 

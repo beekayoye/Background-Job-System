@@ -1,15 +1,18 @@
 import { PrismaClient } from '@prisma/client';
-import { computeBackoffDelay } from '../lib/backoff';
 import { AppConfig } from '../lib/config';
 
 /**
  * Sweeps for stuck jobs left in 'processing' status longer than STUCK_JOB_TIMEOUT_MS
  * and resets them back to 'pending' (or 'dead' if maxAttempts is reached).
+ *
+ * NOTE: For recovered stuck jobs, runAt is reset to now() so that the job is
+ * immediately eligible for pickup by the next worker polling cycle without
+ * being delayed by exponential backoff.
  */
 export async function sweepStuckJobs(prisma: PrismaClient, config: AppConfig): Promise<number> {
   const cutoff = new Date(Date.now() - config.STUCK_JOB_TIMEOUT_MS);
 
-  // Find stuck processing jobs
+  // Find stuck processing jobs older than STUCK_JOB_TIMEOUT_MS
   const stuckJobs = await prisma.job.findMany({
     where: {
       status: 'processing',
@@ -36,14 +39,13 @@ export async function sweepStuckJobs(prisma: PrismaClient, config: AppConfig): P
         },
       });
     } else {
-      const delayMs = computeBackoffDelay(nextAttempts, config.BACKOFF_BASE_MS, config.BACKOFF_CAP_MS, config.JITTER_FACTOR);
       await prisma.job.update({
         where: { id: job.id },
         data: {
           status: 'pending',
           attempts: nextAttempts,
           lastError: errorMessage,
-          runAt: new Date(Date.now() + delayMs),
+          runAt: new Date(),
           startedAt: null,
         },
       });
@@ -55,9 +57,16 @@ export async function sweepStuckJobs(prisma: PrismaClient, config: AppConfig): P
 
 /**
  * Starts the recurring sweep timer loop inside the worker process.
+ * Runs an immediate sweep check on startup, followed by the recurring timer interval.
  */
 export function startSweepLoop(prisma: PrismaClient, config: AppConfig): NodeJS.Timeout {
   const intervalMs = Math.round(config.STUCK_JOB_TIMEOUT_MS / 2);
+
+  // Immediate sweep on startup
+  sweepStuckJobs(prisma, config).catch((err) => {
+    console.error('Error executing initial stuck job sweep on startup:', err);
+  });
+
   const timer = setInterval(async () => {
     try {
       const recovered = await sweepStuckJobs(prisma, config);
