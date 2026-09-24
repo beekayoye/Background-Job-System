@@ -1,8 +1,9 @@
+import { Job } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { config } from '../lib/config';
 import { claimNextJob } from './claim';
 import { startSweepLoop } from './sweep';
-import { MockEmailProvider, EmailProvider } from '../jobs/email/provider';
+import { MockEmailProvider, ResendEmailProvider, EmailProvider } from '../jobs/email/provider';
 import { processEmailJob } from '../jobs/email/handler';
 
 export class Worker {
@@ -13,7 +14,15 @@ export class Worker {
   private sweepTimer: NodeJS.Timeout | null = null;
 
   constructor(customProvider?: EmailProvider) {
-    this.provider = customProvider || new MockEmailProvider();
+    if (customProvider) {
+      this.provider = customProvider;
+    } else if (config.EMAIL_API_KEY && config.EMAIL_API_KEY.startsWith('re_')) {
+      console.log('📧 Initialized ResendEmailProvider for transactional email dispatch.');
+      this.provider = new ResendEmailProvider(config.EMAIL_API_KEY, config.EMAIL_API_TIMEOUT_MS);
+    } else {
+      console.log('🧪 Initialized MockEmailProvider for local sandbox email dispatch.');
+      this.provider = new MockEmailProvider();
+    }
   }
 
   public getActiveJobsCount(): number {
@@ -76,7 +85,7 @@ export class Worker {
     }
   }
 
-  private async executeJob(job: any): Promise<void> {
+  private async executeJob(job: Job): Promise<void> {
     try {
       const result = await processEmailJob(job, this.provider, prisma);
       if (result.classification === 'system_level') {

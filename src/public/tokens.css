@@ -1,0 +1,165 @@
+/**
+ * ==============================================================================
+ * DESIGN SYSTEM CSS TOKENS
+ * Generated automatically by convert-tokens.js
+ * Source: design-tokens.tokens.json
+ * ==============================================================================
+ */
+:root {
+  /* ==========================================================================
+     1. PRIMITIVE COLORS (Foundational Palettes)
+     ========================================================================== */
+  --primitive-color-key-primary: #004ed4ff;
+  --primitive-color-key-secondary: #003eaaff;
+  --primitive-color-key-tertiary: #005efeff;
+  --primitive-color-key-neutral: #16181dff;
+  --primitive-color-key-neutral-variant: #38393aff;
+  --primitive-color-key-error: #c51707ff;
+
+  --primitive-color-primary-0: #000000ff;
+  --primitive-color-primary-10: #001333ff;
+  --primitive-color-primary-20: #002566ff;
+  --primitive-color-primary-30: #003899ff;
+  --primitive-color-primary-40: #004bccff;
+  --primitive-color-primary-50: #005dffff;
+  --primitive-color-primary-60: #337effff;
+  --primitive-color-primary-70: #669effff;
+  --primitive-color-primary-80: #99beffff;
+  --primitive-color-primary-90: #ccdfffff;
+  --primitive-color-primary-95: #e5efffff;
+  --primitive-color-primary-98: #f5f9ffff;
+  --primitive-color-primary-99: #fafcffff;
+  --primitive-color-primary-100: #ffffffff;
+
+  --primitive-color-secondary-0: #000000ff;
+  --primitive-color-secondary-10: #001c4cff;
+  --primitive-color-secondary-20: #002e80ff;
+  --primitive-color-secondary-30: #003eaaff;
+  --primitive-color-secondary-40: #004ed6ff;
+  --primitive-color-secondary-50: #005dffff;
+  --primitive-color-secondary-60: #3d84ffff;
+  --primitive-color-secondary-70: #70a5ffff;
+  --primitive-color-secondary-80: #a3c5ffff;
+  --primitive-color-secondary-90: #d6e5ffff;
+  --primitive-color-secondary-95: #ebf2ffff;
+  --primitive-color-secondary-98: #f5f9ffff;
+  --primitive-color-secondary-99: #fafcffff;
+  --primitive-color-secondary-100: #ffffffff;
+
+  --primitive-color-tertiary-0: #000000ff;
+  --primitive-color-tertiary-10: #001333ff;
+  --primitive-color-tertiary-20: #002666ff;
+  --primitive-color-tertiary-30: #003999ff;
+  --primitive-color-tertiary-40: #004bccff;
+  --primitive-color-tertiary-50: #005efeff;
+  --primitive-color-tertiary-60: #337effff;
+  --primitive-color-tertiary-70: #669fffff;
+  --primitive-color-tertiary-80: #99bfffff;
+  --primitive-color-tertiary-90: #ccdfffff;
+  --primitive-color-tertiary-95: #e5efffff;
+  --primitive-color-tertiary-98: #f5f9ffff;
+  --primitive-color-tertiary-99: #fafcffff;
+  --primitive-color-tertiary-100: #ffffffff;
+
+  --primitive-color-neutral-0: #000000ff;
+  --primitive-color-neutral-10: #16181dff;
+  --primitive-color-neutral-20: #2c303aff;
+  --primitive-color-neutral-30: #424857ff;
+  --primitive-color-neutral-40: #586074ff;
+  --primitive-color-neutral-50: #6e7891ff;
+  --primitive-color-neutral-60: #8b93a7ff;
+  --primitive-color-neutral-70: #a8aebdff;
+  --primitive-color-neutral-80: #c5c9d3ff;
+  --primitive-color-neutral-90: #e2e4e9ff;
+  --primitive-color-neutral-95: #f0f1f4ff;
+  --primitive-color-neutral-98: #f9fafbff;
+  --primitive-color-neutral-99: #fcfcfdff;
+  --primitive-color-neutral-100: #ffffffff;
+
+  --primitive-color-neutralvariant-0: #000000ff;
+  --primitive-color-neutralvariant-10: #19191aff;
+  --primitive-color-neutralvariant-20: #323334ff;
+  --primitive-color-neutralvariant-30: #4b4c4eff;
+  --primitive-color-neutralvariant-40: #646668ff;
+  --primitive-color-neutralvariant-50: #7d8082ff;
+  --primitive-color-neutralvariant-60: #97999bff;
+  --primitive-color-neutralvariant-70: #b1b2b4ff;
+  --primitive-color-neutralvariant-80: #cbcccdff;
+  --primitive-color-neutralvariant-90: #e5e5e6ff;
+  --primitive-color-neutralvariant-95: #f2f2f2ff;
+  --primitive-color-neutralvariant-98: #fafafaff;
+  --primitive-color-neutralvariant-99: #fcfcfcff;
+  --primitive-color-neutralvariant-100: #ffffffff;
+
+  --primitive-color-error-0: #000000ff;
+  --primitive-color-error-10: #310602ff;
+  --primitive-color-error-20: #630b03ff;
+  --primitive-color-error-30: #ad1406ff;
+  --primitive-color-error-40: #c51707ff;
+  --primitive-color-error-50: #f71c08ff;
+  --primitive-color-error-60: #f84a3aff;
+  --primitive-color-error-70: #fb8e84ff;
+  --primitive-color-error-80: #fcada6ff;
+  --primitive-color-error-90: #fdd2ceff;
+  --primitive-color-error-95: #fee8e6ff;
+  --primitive-color-error-98: #fff6f5ff;
+  --primitive-color-error-99: #fffafaff;
+  --primitive-color-error-100: #ffffffff;
+
+  /* ==========================================================================
+     2. SEMANTIC COLOR ROLES
+     ========================================================================== */
+  --color-primary: var(--primitive-color-key-primary);
+  --color-on-primary: var(--primitive-color-primary-100);
+  --color-primary-container: var(--primitive-color-primary-90);
+  --color-on-primary-container: var(--primitive-color-primary-30);
+  --color-secondary: var(--primitive-color-key-secondary);
+  --color-on-secondary: var(--primitive-color-secondary-100);
+  --color-secondary-container: var(--primitive-color-secondary-90);
+  --color-on-secondary-container: var(--primitive-color-secondary-30);
+  --color-tertiary: var(--primitive-color-key-tertiary);
+  --color-on-tertiary: var(--primitive-color-tertiary-100);
+  --color-tertiary-container: var(--primitive-color-tertiary-90);
+  --color-on-tertiary-container: var(--primitive-color-tertiary-30);
+  --color-error: var(--primitive-color-key-error);
+  --color-on-error: var(--primitive-color-error-100);
+  --color-error-container: var(--primitive-color-error-90);
+  --color-on-error-container: var(--primitive-color-error-30);
+  --color-surface-color: var(--primitive-color-neutral-98);
+  --color-on-surface: var(--primitive-color-neutral-10);
+  --color-surface-variant: var(--primitive-color-neutralvariant-90);
+  --color-on-surface-variant: var(--primitive-color-neutralvariant-30);
+  --color-surface-container-highest: var(--primitive-color-neutral-90);
+  --color-surface-container-high: var(--primitive-color-neutral-90);
+  --color-surface-container: var(--primitive-color-neutral-95);
+  --color-surface-container-low: var(--primitive-color-neutral-98);
+  --color-surface-container-lowest: var(--primitive-color-neutral-100);
+  --color-inverse-surface: var(--primitive-color-neutral-20);
+  --color-inverse-on-surface: var(--primitive-color-neutral-95);
+  --color-surface-tint: var(--primitive-color-primary-40);
+
+  /* ==========================================================================
+     3. SPACING SCALE
+     ========================================================================== */
+  --spacing-none: 0px;
+  --spacing-xs: 4px;
+  --spacing-sm: 8px;
+  --spacing-md: 12px;
+  --spacing-base: 16px;
+  --spacing-lg: 20px;
+  --spacing-xl: 24px;
+  --spacing-2xl: 32px;
+
+  /* ==========================================================================
+     4. TYPOGRAPHY
+     ========================================================================== */
+  --typography-font-family-headline: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  --typography-font-family-body: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+
+  /* ==========================================================================
+     5. EFFECTS / SHADOWS
+     ========================================================================== */
+  --effect-elevation-1: 0 1px 3px 0 rgba(0, 0, 0, 0.08), 0 1px 2px -1px rgba(0, 0, 0, 0.08);
+  --effect-elevation-2: 0 4px 6px -1px rgba(0, 0, 0, 0.08), 0 2px 4px -2px rgba(0, 0, 0, 0.08);
+  --effect-elevation-3: 0 10px 15px -3px rgba(0, 0, 0, 0.08), 0 4px 6px -4px rgba(0, 0, 0, 0.08);
+}
