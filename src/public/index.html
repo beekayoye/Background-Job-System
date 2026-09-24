@@ -261,6 +261,33 @@
       background-color: var(--color-secondary, #003eaaff);
     }
 
+    .btn-icon-delete {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background-color: var(--color-surface-container, #f0f1f4);
+      color: var(--color-error, #c51707);
+      border: 1px solid var(--color-surface-container-high, #e2e4e9);
+      padding: 6px 12px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+
+    .btn-icon-delete:hover {
+      background-color: var(--color-error-container, #fdd2ce);
+      border-color: var(--color-error, #c51707);
+      color: var(--color-on-error-container, #ad1406);
+      transform: translateY(-1px);
+    }
+
+    .btn-icon-delete svg {
+      stroke: currentColor;
+      flex-shrink: 0;
+    }
+
     /* =========================================================================
        STATUS VISUALIZATION SYSTEM (pending, processing, succeeded, failed, dead)
        ========================================================================= */
@@ -942,11 +969,22 @@
           node3.className = 'step-node dead';
           step3Label.innerText = 'Dead';
 
-          // Add inline Retry Action button
+          // Add inline Retry & Delete Action buttons
           actionArea.innerHTML = `
-            <button class="btn btn-retry-action" onclick="retryJob('${job.id}')">
-              🔁 Retry Dead Job
-            </button>
+            <div style="display: flex; gap: 8px; align-items: center;">
+              <button class="btn btn-retry-action" onclick="retryJob('${job.id}')" title="Retry dead job">
+                🔁 Retry
+              </button>
+              <button class="btn-icon-delete" onclick="deleteJob('${job.id}')" title="Permanently delete dead job">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <polyline points="3 6 5 6 21 6"></polyline>
+                  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                  <line x1="10" y1="11" x2="10" y2="17"></line>
+                  <line x1="14" y1="11" x2="14" y2="17"></line>
+                </svg>
+                <span>Delete</span>
+              </button>
+            </div>
           `;
           break;
 
@@ -1082,9 +1120,20 @@
               <span style="font-size: 11px; color: var(--color-on-surface-variant);">
                 Attempts: ${j.attempts}/${j.maxAttempts} &bull; Dead At: ${new Date(j.updatedAt).toLocaleTimeString()}
               </span>
-              <button class="btn btn-secondary" style="padding: 5px 12px; font-size: 12px;" onclick="retryJob('${j.id}')">
-                🔁 Retry Job
-              </button>
+              <div style="display: flex; gap: 8px; align-items: center;">
+                <button class="btn btn-secondary" style="padding: 5px 12px; font-size: 12px;" onclick="retryJob('${j.id}')" title="Retry dead job">
+                  🔁 Retry
+                </button>
+                <button class="btn-icon-delete" style="padding: 5px 10px; font-size: 12px;" onclick="deleteJob('${j.id}')" title="Permanently delete dead job">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="3 6 5 6 21 6"></polyline>
+                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                    <line x1="10" y1="11" x2="10" y2="17"></line>
+                    <line x1="14" y1="11" x2="14" y2="17"></line>
+                  </svg>
+                  <span>Delete</span>
+                </button>
+              </div>
             </div>
           </div>
         `).join('');
@@ -1113,6 +1162,33 @@
         }
       } catch (err) {
         showToast('Error retrying job: ' + err.message);
+      }
+    };
+
+    // Delete dead job
+    window.deleteJob = async function(id) {
+      if (!confirm(`Are you sure you want to permanently delete dead job ${id.substring(0, 8)}...?`)) return;
+
+      try {
+        const headers = await getHeaders();
+        const res = await fetch(`/api/jobs/${id}`, {
+          method: 'DELETE',
+          headers
+        });
+        const data = await res.json();
+        if (res.ok) {
+          showToast(`Deleted dead job ${id.substring(0, 8)}...`);
+          if (document.getElementById('statusJobId').value === id) {
+            document.getElementById('statusResult').style.display = 'none';
+            document.getElementById('statusEmpty').style.display = 'block';
+            document.getElementById('statusJobId').value = '';
+          }
+          loadDeadJobs();
+        } else {
+          showToast(`Delete failed: ${data.error || 'Request failed'}`);
+        }
+      } catch (err) {
+        showToast('Error deleting job: ' + err.message);
       }
     };
 

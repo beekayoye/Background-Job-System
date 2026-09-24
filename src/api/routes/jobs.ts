@@ -153,3 +153,35 @@ jobsRouter.post('/:id/retry', async (req: Request, res: Response) => {
     res.status(500).json({ error: 'Internal server error' });
   }
 });
+
+/**
+ * DELETE /api/jobs/:id
+ * Permanently deletes a dead job from the database.
+ */
+jobsRouter.delete('/:id', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const job = await prisma.job.findUnique({
+      where: { id },
+    });
+
+    if (!job) {
+      res.status(404).json({ error: 'Job not found' });
+      return;
+    }
+
+    if (job.status !== 'dead') {
+      res.status(400).json({ error: `Cannot delete job in status "${job.status}"; only "dead" jobs can be deleted` });
+      return;
+    }
+
+    await prisma.job.delete({
+      where: { id },
+    });
+
+    res.status(200).json({ message: `Dead job ${id} permanently deleted`, id });
+  } catch (err) {
+    console.error('Error deleting dead job:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
