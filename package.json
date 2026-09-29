@@ -14,7 +14,14 @@
     "prisma:migrate": "prisma migrate dev",
     "lint": "eslint src/ tests/ --ext .ts",
     "format": "prettier --write \"src/**/*.ts\" \"tests/**/*.ts\"",
-    "test:break-it": "ts-node tests/break-it/01-idempotency.ts"
+    "test:break-it": "ts-node tests/break-it/01-idempotency.ts",
+    "test:break-it:01": "ts-node tests/break-it/01-idempotency.ts",
+    "test:break-it:02": "ts-node tests/break-it/02-concurrency-cap.ts",
+    "test:break-it:03": "ts-node tests/break-it/03-forced-failure-to-dead.ts",
+    "test:break-it:04": "ts-node tests/break-it/04-stuck-job-recovery.ts",
+    "test:break-it:05": "ts-node tests/break-it/05-two-worker-race.ts",
+    "test:break-it:all": "ts-node tests/break-it/run-all.ts",
+    "test:e2e": "ts-node test/run-e2e-verification.ts"
   },
   "dependencies": {
     "@prisma/client": "^5.22.0",

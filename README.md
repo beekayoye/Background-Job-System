@@ -1,284 +1,228 @@
-# 🎨 Design Tokens to CSS Converter
+# 🚀 Reliable Background Job Processing System
 
-A robust, modular JavaScript converter that transforms design tokens defined in Figma (`design-tokens.tokens.json`) into clean, standards-compliant **CSS Custom Properties (Variables)** and utility classes.
+A production-grade, asynchronous background job processing system built with **Node.js, TypeScript, PostgreSQL (Prisma), and Express**.
+
+This project decouples slow, unreliable I/O operations (such as transactional email delivery) from the synchronous HTTP request cycle, processing jobs asynchronously with atomic locking, exponential backoff retries with random jitter, crash recovery sweeps, and a Dead Letter Queue (DLQ).
 
 ---
 
 ## 📑 Table of Contents
 
-- [Overview & Architecture](#-overview--architecture)
-- [Color System Architecture](#-color-system-architecture)
-  - [1. Primitive Colors (Foundations)](#1-primitive-colors-foundations)
-  - [2. Semantic Color Roles (UI Application)](#2-semantic-color-roles-ui-application)
-- [Design Token Categories](#-design-token-categories)
-  - [Spacing](#-spacing)
-  - [Typography](#-typography)
-  - [Effects & Shadows](#-effects--shadows)
-- [Getting Started](#-getting-started)
-  - [Prerequisites](#prerequisites)
-  - [Running the Converter](#running-the-converter)
-  - [Running Automated Tests](#running-automated-tests)
-- [Generated Files & Output Structure](#-generated-files--output-structure)
-- [UI Usage Examples](#-ui-usage-examples)
+- [Architectural Overview](#-architectural-overview)
+- [System Guarantees & Constraints](#-system-guarantees--constraints)
+- [Tech Stack](#-tech-stack)
+- [Project Layout](#-project-layout)
+- [Getting Started & Local Setup](#-getting-started--local-setup)
+- [Running the System](#-running-the-system)
+- [API Endpoints](#-api-endpoints)
+- [Email Provider Integration](#-email-provider-integration)
+- [Failure Classification & Backoff Math](#-failure-classification--backoff-math)
+- [Peer Review Verification Suite (Break-It Tests)](#-peer-review-verification-suite-break-it-tests)
+- [Code Quality & Standards](#-code-quality--standards)
 
 ---
 
-## 🏛 Overview & Architecture
+## 🏛 Architectural Overview
 
-Modern design systems separate **raw color foundations** (primitives) from **intentional user interface assignments** (semantic roles). This separation ensures that UI themes, dark mode switching, and brand re-skins can be updated seamlessly without modifying individual UI components.
+The system operates as **two independent, decoupled processes** communicating exclusively via PostgreSQL:
 
 ```mermaid
-flowchart LR
-    subgraph Primitives ["1. Primitive Foundations (--primitive-color-*)"]
-        Key["Key Colors (Brand Hues)"]
-        Tonal["Tonal Palettes (0, 10, ... 100)"]
+flowchart TD
+    Client(["HTTP Client / Frontend Dashboard"])
+
+    subgraph Process1 ["Process 1: API Server (Express)"]
+        Enqueue["POST /api/jobs (Enqueues pending row, Returns HTTP 202)"]
+        Inspector["GET /api/jobs/:id (Job Status)"]
+        DLQ_API["GET /api/jobs/dead & POST /:id/retry"]
     end
 
-    subgraph Semantic ["2. Semantic Color Roles (--color-*)"]
-        Primary["--color-primary"]
-        Surface["--color-surface"]
-        Container["--color-primary-container"]
-        Error["--color-error"]
+    subgraph Database ["PostgreSQL (Prisma)"]
+        Table[("Job Table<br/>id, type, payload, status, attempts,<br/>maxAttempts, lastError, runAt, idempotencyKey")]
     end
 
-    subgraph UI ["3. Application UI Components"]
-        Button[".btn { background: var(--color-primary); }"]
-        Card[".card { background: var(--color-surface); }"]
-        Alert[".alert { color: var(--color-error); }"]
+    subgraph Process2 ["Process 2: Worker Process"]
+        Claim["claimNextJob()<br/>UPDATE ... WHERE id = (SELECT ... FOR UPDATE SKIP LOCKED)"]
+        Exec["executeJob() via EmailProvider"]
+        Sweep["Stuck-Job Sweep Timer (Every 60s)"]
     end
 
-    Primitives -->|"Referenced via var(...)"| Semantic
-    Semantic -->|"Applied in stylesheets"| UI
+    subgraph Providers ["Email Delivery Pipeline"]
+        Resend["Resend API (Live)"]
+        Mock["Mock Provider (Deterministic Sandbox)"]
+    end
+
+    Client -->|"1. Enqueue / Inspect"| Process1
+    Process1 -->|"Write / Read"| Database
+    Database <-->|"2. Atomic Claim & Update"| Process2
+    Process2 -->|"3. Dispatch"| Providers
 ```
 
 ---
 
-## 🎨 Color System Architecture
+## 🛡 System Guarantees & Constraints
 
-### 1. Primitive Colors (Foundations)
-> ⚠️ **CRITICAL RULE**: Primitive colors are foundation palettes and **MUST NOT** be applied directly to UI elements in CSS.
+| Guarantee | Implementation Mechanism |
+| :--- | :--- |
+| **Non-blocking Enqueue** | `POST /api/jobs` strictly inserts a `pending` row and returns HTTP `202 Accepted` with a job ID in `< 20ms`. Zero synchronous provider calls in the request path. |
+| **Strict Idempotency** | Duplicate `idempotencyKey` submissions return HTTP `200 OK` with the existing job record instead of creating a duplicate row. |
+| **Zero Double-Claims** | Worker uses atomic `UPDATE "Job" SET status = 'processing', "startedAt" = now() WHERE id = (SELECT id FROM "Job" WHERE status = 'pending' AND "runAt" <= now() ORDER BY "runAt" ASC LIMIT 1 FOR UPDATE SKIP LOCKED) RETURNING *;`. |
+| **Per-Worker Concurrency Limit** | Each worker process manages its own in-flight job pool up to `CONCURRENCY_LIMIT` (default: 5) using an active count throttle. |
+| **Crash Recovery** | An ungracefully terminated worker leaves jobs in `processing`. The background sweep resets jobs where `startedAt < now() - STUCK_JOB_TIMEOUT_MS` back to `pending`. |
+| **Circuit Breaker on Auth Failure** | If the email provider returns HTTP `401/403` (credential failure), the worker pauses polling to prevent burning retries across the entire queue. |
 
-- **Variable Prefix**: `--primitive-color-*`
-- **Purpose**: Defines the raw palette spectrum generated from seed/key colors across 14 tonal steps (`0`, `10`, `20`, `30`, `40`, `50`, `60`, `70`, `80`, `90`, `95`, `98`, `99`, `100`).
-- **Palettes Included**:
-  - `key color group`: Brand source colors (`primary`, `secondary`, `tertiary`, `neutral`, `neutral-variant`, `error`).
-  - `primary color palette`: Tonal steps for primary brand color.
-  - `secondary color palette`: Tonal steps for secondary accents.
-  - `tertiary color palette`: Tonal steps for tertiary accents.
-  - `neutral color palette`: Surface, background, and text neutral grays.
-  - `neutral variant color palette`: Border, outline, and subtle surface grays.
-  - `error color palette`: Destructive and error feedback shades.
+---
 
-```css
-/* Example Primitive CSS Output */
-:root {
-  --primitive-color-key-primary: #004ed4ff;
-  --primitive-color-primary-40: #004bccff;
-  --primitive-color-primary-90: #ccdfffff;
-  --primitive-color-neutral-10: #16181dff;
-  --primitive-color-neutral-98: #f9fafbff;
-}
+## 🛠 Tech Stack
+
+- **Runtime:** Node.js (>= v22.x LTS), TypeScript (Strict mode)
+- **Database & ORM:** PostgreSQL, Prisma ORM
+- **API Framework:** Express.js
+- **Testing & Verification:** TypeScript break-it scripts with assertions
+
+---
+
+## 📁 Project Layout
+
+```
+├── prisma/
+│   └── schema.prisma         # Locked Job schema with @@index([status, runAt])
+├── src/
+│   ├── api/
+│   │   ├── server.ts         # Express server entry point (Process 1)
+│   │   ├── routes/jobs.ts    # REST endpoints (Enqueue, Status, DLQ, Retry, Delete)
+│   │   └── middleware/auth.ts # Fixed API key authentication
+│   ├── worker/
+│   │   ├── worker.ts         # Polling loop & concurrency manager (Process 2)
+│   │   ├── claim.ts          # Atomic FOR UPDATE SKIP LOCKED claim query
+│   │   └── sweep.ts          # Stuck-job recovery sweep loop
+│   ├── jobs/
+│   │   └── email/
+│   │       ├── provider.ts   # EmailProvider interface, Resend & Mock adapters
+│   │       └── handler.ts    # Failure classifier & retry orchestrator
+│   ├── lib/
+│   │   ├── backoff.ts        # Locked exponential backoff + jitter calculator
+│   │   ├── config.ts         # Validated environment configuration
+│   │   └── prisma.ts         # Shared PrismaClient singleton
+│   └── public/
+│       ├── index.html        # Interactive UI dashboard (5-status visualizer, DLQ)
+│       └── tokens.css        # Design tokens stylesheet
+└── tests/
+    └── break-it/             # 5 Mandatory Phase 4 validation test scripts
+        ├── 01-idempotency.ts
+        ├── 02-concurrency-cap.ts
+        ├── 03-forced-failure-to-dead.ts
+        ├── 04-stuck-job-recovery.ts
+        ├── 05-two-worker-race.ts
+        └── run-all.ts        # Master runner for npm run test:break-it:all
 ```
 
 ---
 
-### 2. Semantic Color Roles (UI Application)
-> ✅ **CRITICAL RULE**: All UI components and stylesheets **MUST** consume these semantic color roles.
+## ⚙️ Getting Started & Local Setup
 
-- **Variable Prefix**: `--color-*`
-- **Purpose**: Contextual color assignments that convey purpose (action, surface, container, contrast, error).
-- **Implementation**: Each role references its underlying primitive token via CSS `var(--primitive-color-*)`.
+### 1. Prerequisites
+- Node.js (v22.x LTS recommended)
+- PostgreSQL running locally or in Docker
 
-| Semantic Variable | Referenced Primitive | Description / Usage |
-| :--- | :--- | :--- |
-| `--color-primary` | `var(--primitive-color-key-primary)` | Primary call-to-action color |
-| `--color-on-primary` | `var(--primitive-color-primary-100)` | Text/icons placed on `--color-primary` |
-| `--color-primary-container` | `var(--primitive-color-primary-90)` | Subtle accent backgrounds, badges |
-| `--color-on-primary-container` | `var(--primitive-color-primary-30)` | Text/icons on primary container |
-| `--color-secondary` | `var(--primitive-color-key-secondary)` | Secondary actions and badges |
-| `--color-on-secondary` | `var(--primitive-color-secondary-100)` | Text/icons placed on `--color-secondary` |
-| `--color-secondary-container` | `var(--primitive-color-secondary-90)` | Secondary container fills |
-| `--color-on-secondary-container` | `var(--primitive-color-secondary-30)` | Text/icons on secondary container |
-| `--color-tertiary` | `var(--primitive-color-key-tertiary)` | Tertiary accent highlights |
-| `--color-on-tertiary` | `var(--primitive-color-tertiary-100)` | Text/icons placed on tertiary |
-| `--color-error` | `var(--primitive-color-key-error)` | Error messages, destructive buttons |
-| `--color-on-error` | `var(--primitive-color-error-100)` | Text/icons on error background |
-| `--color-error-container` | `var(--primitive-color-error-90)` | Error banner / alert background |
-| `--color-on-error-container` | `var(--primitive-color-error-30)` | Text/icons on error banner |
-| `--color-surface-color` | `var(--primitive-color-neutral-98)` | Default page / background surface |
-| `--color-on-surface` | `var(--primitive-color-neutral-10)` | Default high-contrast body text |
-| `--color-surface-variant` | `var(--primitive-color-neutralvariant-90)` | Neutral cards, dividers, borders |
-| `--color-on-surface-variant` | `var(--primitive-color-neutralvariant-30)` | Secondary / helper text |
-| `--color-surface-container` | `var(--primitive-color-neutral-95)` | Default card / modal surface |
-| `--color-surface-container-high`| `var(--primitive-color-neutral-90)` | Elevated dialog surface |
-| `--color-surface-container-highest` | `var(--primitive-color-neutral-90)` | High elevation container |
-| `--color-surface-container-low`| `var(--primitive-color-neutral-98)` | Low elevation recessed container |
-| `--color-surface-container-lowest` | `var(--primitive-color-neutral-100)` | Pure white container |
-| `--color-inverse-surface` | `var(--primitive-color-neutral-20)` | Dark snackbar / tooltip background |
-| `--color-inverse-on-surface` | `var(--primitive-color-neutral-95)` | Text on inverse snackbar / tooltip |
-| `--color-surface-tint` | `var(--primitive-color-primary-40)` | Surface tint overlay |
+### 2. Install Dependencies
+```bash
+npm install
+```
+
+### 3. Configure Environment Variables
+Copy `.env.example` to `.env` and configure your credentials:
+```bash
+cp .env.example .env
+```
+
+```env
+DATABASE_URL="postgresql://postgres:postgres@localhost:5432/job_system_db?schema=public"
+FIXED_API_KEY="demo-secret-api-key-2026"
+EMAIL_API_KEY="mock-key" # Or "re_..." for Resend
+EMAIL_FROM_ADDRESS="onboarding@resend.dev"
+```
+
+### 4. Run Prisma Migrations
+```bash
+npm run prisma:generate
+npm run prisma:migrate
+```
 
 ---
 
-## 📐 Design Token Categories
+## 🚀 Running the System
 
-### 📏 Spacing
-Provides consistent layout scale from compact components to page grids:
+Start the API and Worker processes in two separate terminal windows:
 
-| Variable | Value (px) | Value (rem) | Usage |
+### Terminal 1: HTTP API Server
+```bash
+npm run dev:api
+```
+*Served at `http://localhost:3001` (Dashboard available at `http://localhost:3001/`)*
+
+### Terminal 2: Background Worker Process
+```bash
+npm run dev:worker
+```
+
+---
+
+## 📡 API Endpoints
+
+All mutating endpoints require `Authorization: Bearer <FIXED_API_KEY>` or `x-api-key: <FIXED_API_KEY>`.
+
+| Method | Endpoint | Description | Response Codes |
 | :--- | :--- | :--- | :--- |
-| `--spacing-none` | `0px` | `0rem` | Zero margin/padding reset |
-| `--spacing-xs` | `4px` | `0.25rem` | Micro spacing, icon gaps |
-| `--spacing-sm` | `8px` | `0.5rem` | Compact padding, button gaps |
-| `--spacing-md` | `12px` | `0.75rem` | Input padding, chip spacing |
-| `--spacing-base` | `16px` | `1rem` | Standard component padding |
-| `--spacing-lg` | `20px` | `1.25rem` | Card padding, section gutters |
-| `--spacing-xl` | `24px` | `1.5rem` | Large container padding |
-| `--spacing-2xl` | `32px` | `2rem` | Page gutters, section spacing |
+| `POST` | `/api/jobs` | Enqueue a new background job | `202 Accepted` (New) / `200 OK` (Duplicate key) |
+| `GET` | `/api/jobs/:id` | Inspect job status, attempts, last error, timestamps | `200 OK` / `404 Not Found` |
+| `GET` | `/api/jobs/dead` | List all dead-lettered jobs | `200 OK` |
+| `POST` | `/api/jobs/:id/retry` | Reset a dead job to `pending` with `attempts = 0` | `200 OK` / `400 Bad Request` |
+| `DELETE`| `/api/jobs/:id` | Permanently delete a dead job | `200 OK` / `400 Bad Request` |
+| `GET` | `/api/session` | Public handshake for the demo dashboard | `200 OK` |
 
 ---
 
-### 🔤 Typography
-Includes both atomic CSS variables and pre-composed CSS utility classes (`DM Sans` font family):
+## 📐 Failure Classification & Backoff Math
 
-#### Typescales & Sizes
-- **Display**: `display-large` (64px), `display-medium` (50px), `display-small` (40px)
-- **Headline**: `headline-large` (32px), `headline-medium` (28px), `headline-small` (24px)
-- **Title**: `title-large` (22px), `title-medium` (16px / semi-bold), `title-small` (14px)
-- **Body**: `body-large` (16px), `body-medium` (14px), `body-small` (12px)
-- **Label**: `label-large` (14px), `label-medium` (12px), `label-small` (11px)
+### Retry Delay Formula
+Retries use exponential backoff capped at `BACKOFF_CAP_MS` plus random proportional jitter:
+$$\text{delay} = \min(\text{BACKOFF\_CAP\_MS}, \text{BACKOFF\_BASE\_MS} \times 2^{\text{attempts}}) + \text{random}(0, \text{JITTER\_FACTOR} \times \text{delay})$$
 
-#### Usage Options
-```css
-/* Option A: Using Pre-composed Utility Classes */
-<h1 class="type-display-large">Hero Heading</h1>
-<p class="type-body-large">Main description text.</p>
-
-/* Option B: Using Atomic Variables in Custom CSS */
-.custom-card-title {
-  font-family: var(--typography-title-large-font-family);
-  font-size: var(--typography-title-large-font-size);
-  font-weight: var(--typography-title-large-font-weight);
-  line-height: var(--typography-title-large-line-height);
-  letter-spacing: var(--typography-title-large-letter-spacing);
-}
-```
+### Error Classification
+1. **Transient Errors (e.g., 429 Rate Limit, 5xx Server Error, ETIMEDOUT):**
+   - Increments `attempts` and records `lastError`.
+   - Computes backoff delay with jitter and schedules `runAt` into the future (`now() + delayMs`).
+   - Sets status directly to `pending` (resetting `startedAt` to `null`). The atomic claim query automatically ignores the row until `runAt <= now()`.
+   - Transitions to `dead` if `nextAttempts >= maxAttempts`.
+2. **Permanent Errors (e.g., 422 Malformed Payload, Invalid Recipient Address):**
+   - Immediately transitions to `dead` status without retrying, preserving sending reputation.
+3. **System Errors (e.g., 401/403 Invalid API Credentials):**
+   - **Behavior:** Worker logs a high-priority alert (`[ALERT] Provider authentication failed (401/403)`) and enters a paused state (`isPaused = true`), immediately halting further queue claims to avoid burning retry attempts across the entire queue.
+   - **Recovery / On-Call Action:** Because invalid credentials cannot self-heal automatically, **manual intervention is intentional**. The on-call operator must update `EMAIL_API_KEY` in `.env` (or environment secrets) and restart the worker process (`npm run dev:worker`), or invoke `worker.resume()` if managed via a process supervisor. Active in-flight jobs finish gracefully while polling remains paused.
 
 ---
 
-### 🌫 Effects & Shadows
-Drop shadow tokens for elevation:
+## 🧪 Peer Review Verification Suite (Break-It Tests)
 
-| Variable | Value | Usage |
+This repository includes 5 automated test scripts designed to stress-test and verify all edge cases:
+
+| Test Script | Target Requirement | Command |
 | :--- | :--- | :--- |
-| `--effect-soft-shadow` | `2px 2px 20px 0px #0000001f` | Subtle card elevation |
-| `--effect-medium-shadow` | `2px 4px 6px 0px #00000047` | Dropdowns, hover states |
-| `--effect-hard-shadow` | `4px 6px 8px 0px #00000052` | Modals, prominent popovers |
+| **01 Idempotency** | Submitting the same idempotency key concurrently returns HTTP 200 and yields exactly 1 database row. | `npm run test:break-it:01` |
+| **02 Concurrency Cap** | 50 concurrent enqueues are processed while in-flight worker concurrency strictly adheres to `CONCURRENCY_LIMIT` (5). | `npm run test:break-it:02` |
+| **03 Forced Failure to Dead** | A persistently failing job retries through growing exponential backoff delays and transitions to `dead` at `maxAttempts`. | `npm run test:break-it:03` |
+| **04 Stuck Job Recovery** | A worker process killed mid-job leaves a stuck `processing` row; the sweep recovers it back to `pending`. | `npm run test:break-it:04` |
+| **05 Two-Worker Race** | Two worker processes run concurrently against a single queue with 0 double-claimed jobs. | `npm run test:break-it:05` |
 
----
-
-## 🚀 Getting Started
-
-### Prerequisites
-- Node.js (v14+)
-
-### Running the Converter
-Run the default build script:
+Run all tests sequentially:
 ```bash
-npm run build:tokens
-```
-
-Or execute directly with Node.js:
-```bash
-# Default input (design-tokens.tokens.json) -> output (dist/)
-node convert-tokens.js
-
-# Custom input and output paths
-node convert-tokens.js path/to/tokens.json custom-dist/
-```
-
-### Running Automated Tests
-Run the test suite to verify token integrity and variable mapping:
-```bash
-npm test
+npm run test:break-it:all
 ```
 
 ---
 
-## 📁 Generated Files & Output Structure
+## ✅ Code Quality & Standards
 
-The converter outputs modular stylesheets into the `dist/` directory:
-
-```
-dist/
-├── tokens.css             # 📦 Master bundle (all variables & utility classes)
-├── tokens.primitives.css  # 🧱 Foundation color palettes (--primitive-color-*)
-├── tokens.semantic.css    # 🎯 UI-facing semantic color roles (--color-*)
-├── tokens.spacing.css     # 📏 Spacing scale (--spacing-*)
-├── tokens.typography.css  # 🔤 Typography variables & .type-* classes
-└── tokens.effects.css     # 🌫 Box shadows (--effect-*)
-```
-
----
-
-## 💡 UI Usage Examples
-
-### 1. HTML Component Example
-
-```html
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <link rel="stylesheet" href="dist/tokens.css">
-  <style>
-    body {
-      background-color: var(--color-surface-color);
-      color: var(--color-on-surface);
-      padding: var(--spacing-2xl);
-    }
-
-    .card {
-      background-color: var(--color-surface-container);
-      border-radius: var(--spacing-sm);
-      padding: var(--spacing-xl);
-      box-shadow: var(--effect-soft-shadow);
-      max-width: 420px;
-    }
-
-    .card__btn {
-      background-color: var(--color-primary);
-      color: var(--color-on-primary);
-      padding: var(--spacing-sm) var(--spacing-base);
-      border: none;
-      border-radius: var(--spacing-xs);
-      cursor: pointer;
-      box-shadow: var(--effect-medium-shadow);
-      transition: opacity 0.2s ease;
-    }
-
-    .card__btn:hover {
-      opacity: 0.9;
-    }
-
-    .card__badge {
-      background-color: var(--color-primary-container);
-      color: var(--color-on-primary-container);
-      padding: var(--spacing-xs) var(--spacing-sm);
-      border-radius: 9999px;
-      display: inline-block;
-    }
-  </style>
-</head>
-<body>
-  <div class="card">
-    <span class="card__badge type-label-small">NEW FEATURE</span>
-    <h2 class="type-title-large" style="margin: var(--spacing-sm) 0;">Design System Ready</h2>
-    <p class="type-body-medium" style="color: var(--color-on-surface-variant); margin-bottom: var(--spacing-lg);">
-      All UI components now safely consume semantic color roles referencing primitive foundation tokens.
-    </p>
-    <button class="card__btn type-label-large">Get Started</button>
-  </div>
-</body>
-</html>
-```
+- **Strict TypeScript:** `npx tsc --noEmit` passes with **0 errors**.
+- **ESLint:** `npm run lint` passes with **0 warnings**.
+- **Clean Architecture:** Strict separation between HTTP handling (`/src/api`), queue claiming (`/src/worker`), and email adapters (`/src/jobs`).
