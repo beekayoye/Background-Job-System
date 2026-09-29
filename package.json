@@ -20,7 +20,8 @@
     "test:break-it:03": "ts-node tests/break-it/03-forced-failure-to-dead.ts",
     "test:break-it:04": "ts-node tests/break-it/04-stuck-job-recovery.ts",
     "test:break-it:05": "ts-node tests/break-it/05-two-worker-race.ts",
-    "test:break-it:all": "ts-node test/run-e2e-verification.ts"
+    "test:break-it:all": "ts-node tests/break-it/run-all.ts",
+    "test:e2e": "ts-node test/run-e2e-verification.ts"
   },
   "dependencies": {
     "@prisma/client": "^5.22.0",

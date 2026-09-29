@@ -112,7 +112,8 @@ flowchart TD
         ├── 02-concurrency-cap.ts
         ├── 03-forced-failure-to-dead.ts
         ├── 04-stuck-job-recovery.ts
-        └── 05-two-worker-race.ts
+        ├── 05-two-worker-race.ts
+        └── run-all.ts        # Master runner for npm run test:break-it:all
 ```
 
 ---
@@ -189,14 +190,15 @@ $$\text{delay} = \min(\text{BACKOFF\_CAP\_MS}, \text{BACKOFF\_BASE\_MS} \times 2
 
 ### Error Classification
 1. **Transient Errors (e.g., 429 Rate Limit, 5xx Server Error, ETIMEDOUT):**
-   - Increments `attempts`.
-   - Calculates next `runAt` using the backoff formula.
-   - Status transitions to `failed`, then returns to `pending` when `runAt <= now()`.
-   - Transitions to `dead` if `attempts >= maxAttempts`.
+   - Increments `attempts` and records `lastError`.
+   - Computes backoff delay with jitter and schedules `runAt` into the future (`now() + delayMs`).
+   - Sets status directly to `pending` (resetting `startedAt` to `null`). The atomic claim query automatically ignores the row until `runAt <= now()`.
+   - Transitions to `dead` if `nextAttempts >= maxAttempts`.
 2. **Permanent Errors (e.g., 422 Malformed Payload, Invalid Recipient Address):**
    - Immediately transitions to `dead` status without retrying, preserving sending reputation.
 3. **System Errors (e.g., 401/403 Invalid API Credentials):**
-   - Worker logs a high-priority alert and pauses queue polling to avoid burning retry attempts.
+   - **Behavior:** Worker logs a high-priority alert (`[ALERT] Provider authentication failed (401/403)`) and enters a paused state (`isPaused = true`), immediately halting further queue claims to avoid burning retry attempts across the entire queue.
+   - **Recovery / On-Call Action:** Because invalid credentials cannot self-heal automatically, **manual intervention is intentional**. The on-call operator must update `EMAIL_API_KEY` in `.env` (or environment secrets) and restart the worker process (`npm run dev:worker`), or invoke `worker.resume()` if managed via a process supervisor. Active in-flight jobs finish gracefully while polling remains paused.
 
 ---
 
